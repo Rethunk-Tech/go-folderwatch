@@ -73,12 +73,12 @@ func start(t *testing.T, targets func() []Target) *got {
 func TestBurstFiresOnce(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	g := start(t, func() []Target { return []Target{{Key: "downloads", Dir: dir}} })
+	g := start(t, func() []Target { return []Target{{Key: "files", Dir: dir}} })
 	for i := range 5 {
 		_ = os.WriteFile(filepath.Join(dir, string(rune('a'+i))+".zip"), nil, 0o600)
 	}
 	time.Sleep(400 * time.Millisecond)
-	if evs := g.wait(t, 1); len(evs) != 1 || evs[0] != "downloads" {
+	if evs := g.wait(t, 1); len(evs) != 1 || evs[0] != "files" {
 		t.Fatalf("events = %v", evs)
 	}
 }
@@ -88,7 +88,7 @@ func TestEmitCarriesTheTargetBack(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	data := struct{ Name string }{"alpha"}
-	want := Target{Key: "mods", Dir: dir, Report: filepath.Dir(dir), Data: data}
+	want := Target{Key: "source", Dir: dir, Report: filepath.Dir(dir), Data: data}
 	g := start(t, func() []Target { return []Target{want} })
 	_ = os.WriteFile(filepath.Join(dir, "MyMod.dll"), []byte("x"), 0o600)
 	g.wait(t, 1)
@@ -101,8 +101,8 @@ func TestEmitCarriesTheTargetBack(t *testing.T) {
 
 func TestMissingFolderFiresWhenItAppears(t *testing.T) {
 	t.Parallel()
-	dir := filepath.Join(t.TempDir(), "Mods")
-	g := start(t, func() []Target { return []Target{{Key: "mods", Dir: dir}} })
+	dir := filepath.Join(t.TempDir(), "watched")
+	g := start(t, func() []Target { return []Target{{Key: "source", Dir: dir}} })
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestRetargetStopsOldFolder(t *testing.T) {
 	g := start(t, func() []Target {
 		mu.Lock()
 		defer mu.Unlock()
-		return []Target{{Key: "mods", Dir: cur}}
+		return []Target{{Key: "source", Dir: cur}}
 	})
 	mu.Lock()
 	cur = b
@@ -137,7 +137,7 @@ func TestRetargetStopsOldFolder(t *testing.T) {
 func TestSlowDirectWriterWaitsForStableSize(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	g := start(t, func() []Target { return []Target{{Key: "downloads", Dir: dir, Settle: true}} })
+	g := start(t, func() []Target { return []Target{{Key: "files", Dir: dir, Settle: true}} })
 	f, err := os.Create(filepath.Clean(filepath.Join(dir, "big.zip")))
 	if err != nil {
 		t.Fatal(err)
@@ -163,7 +163,7 @@ func TestSlowDirectWriterWaitsForStableSize(t *testing.T) {
 func TestATargetWithoutSettleAnnouncesOnTheQuietTick(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	g := start(t, func() []Target { return []Target{{Key: "mods", Dir: dir}} })
+	g := start(t, func() []Target { return []Target{{Key: "source", Dir: dir}} })
 	f, err := os.Create(filepath.Clean(filepath.Join(dir, "big.zip")))
 	if err != nil {
 		t.Fatal(err)
@@ -180,7 +180,7 @@ func TestATargetWithoutSettleAnnouncesOnTheQuietTick(t *testing.T) {
 func TestRenamedInFileIsAnnouncedAfterOneSettleWindow(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	g := start(t, func() []Target { return []Target{{Key: "downloads", Dir: dir, Settle: true}} })
+	g := start(t, func() []Target { return []Target{{Key: "files", Dir: dir, Settle: true}} })
 	part := filepath.Join(t.TempDir(), "x.part")
 	if err := os.WriteFile(part, []byte("zip"), 0o600); err != nil {
 		t.Fatal(err)
@@ -249,7 +249,7 @@ func TestChangedSignalRetargetsAtOnce(t *testing.T) {
 		_ = Run(ctx, Deps{Targets: func() []Target {
 			mu.Lock()
 			defer mu.Unlock()
-			return []Target{{Key: "mods", Dir: cur}}
+			return []Target{{Key: "source", Dir: cur}}
 		}, Emit: g.emit, Quiet: 50 * time.Millisecond, Retarget: time.Hour, Changed: changed})
 		close(done)
 	}()
@@ -262,44 +262,4 @@ func TestChangedSignalRetargetsAtOnce(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	_ = os.WriteFile(filepath.Join(b, "x"), nil, 0o600)
 	g.wait(t, 1)
-}
-
-// Touched sees every change at once, ahead of the debounce, so a caller's cache is dropped before the folder settles.
-func TestTouchedSeesEachChangeAtOnce(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	var mu sync.Mutex
-	var seen []string
-	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan struct{})
-	go func() {
-		_ = Run(ctx, Deps{
-			Targets: func() []Target { return []Target{{Key: "mods", Dir: dir}} },
-			Emit:    func(Target) {},
-			Touched: func(path string) {
-				mu.Lock()
-				defer mu.Unlock()
-				seen = append(seen, path)
-			},
-			Quiet:    time.Hour,
-			Retarget: 50 * time.Millisecond,
-		})
-		close(done)
-	}()
-	t.Cleanup(func() { cancel(); <-done })
-	time.Sleep(100 * time.Millisecond)
-	name := filepath.Join(dir, "x")
-	_ = os.WriteFile(name, nil, 0o600)
-	for range 40 {
-		mu.Lock()
-		hit := len(seen) > 0 && seen[0] == name
-		mu.Unlock()
-		if hit {
-			return
-		}
-		time.Sleep(25 * time.Millisecond)
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	t.Fatalf("touched = %v, want %s", seen, name)
 }

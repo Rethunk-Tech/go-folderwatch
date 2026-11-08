@@ -22,7 +22,7 @@ func TestHoldClosesTheWatchesBelowAFolderUntilReleased(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		_ = Run(ctx, Deps{
-			Targets: func() []Target { return []Target{{Key: "mods", Dir: src}} },
+			Targets: func() []Target { return []Target{{Key: "source", Dir: src}} },
 			Emit:    g.emit, Quiet: 50 * time.Millisecond, Stable: 100 * time.Millisecond, Retarget: 50 * time.Millisecond, Holds: holds,
 		})
 		close(done)
