@@ -10,7 +10,7 @@ tool (
 	golang.org/x/vuln/cmd/govulncheck
 )
 
-require github.com/fsnotify/fsnotify v1.9.0
+require github.com/fsnotify/fsnotify v1.10.1
 
 require (
 	4d63.com/gocheckcompilerdirectives v1.4.0 // indirect
