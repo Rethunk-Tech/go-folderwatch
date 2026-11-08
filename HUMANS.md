@@ -28,7 +28,7 @@ func main() {
 
  err := folderwatch.Run(ctx, folderwatch.Deps{
   Targets: func() []folderwatch.Target {
-   return []folderwatch.Target{{Key: "mods", Dir: "/path/to/Mods"}}
+   return []folderwatch.Target{{Key: "source", Dir: "/path/to/src"}}
   },
   Emit:  func(t folderwatch.Target) { fmt.Println("changed:", t.Key, t.Dir) },
   Quiet: 500 * time.Millisecond,
