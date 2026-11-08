@@ -1,0 +1,43 @@
+# `gate` derives build and test from the module, and finds `golangci-lint`,
+# `govulncheck` and `actionlint` only on PATH. A runner has none of the three, so
+# detection there falls back to `go vet` and skips the other two without failing
+# the run: the verdict would be green while the lint, vulnerability and workflow
+# checks never executed. Each override below runs the module's own pinned binary
+# through `go tool`, or the checksummed download for actionlint, which is not a
+# module.
+[gates.lint]
+run = "go tool golangci-lint run --allow-parallel-runners ./..."
+
+[gates.vuln]
+run = "go tool govulncheck ./..."
+
+# No-op in CI, like gitleaks: the pre-push hook already ran this gate on every pushed commit, and a runner's
+# download of the pinned binary fails the whole run whenever GitHub release downloads answer 504.
+[gates.workflows]
+run = '[ -n "$CI" ] || ./scripts/actionlint'
+
+# `gate` runs its detected `golangci-lint run`, which does not run formatters, so
+# an unformatted file passes the lint gate. This is that check, as a diff rather
+# than a rewrite: a gate that rewrites the tree passes on a file nobody saw.
+[gates.fmt]
+run = "go tool golangci-lint fmt --diff ./..."
+
+# Compiles the module and its tests for Windows, where a build-tagged file can
+# break without any Linux check noticing.
+# Vets the module and its tests for every OS it builds a file for; add a GOOS here when a
+# file gains a build tag for it.
+[gates.crosscompile]
+run = "GOOS=windows GOARCH=amd64 go vet ./..."
+
+# Linux lint never type-checks a _windows.go file, so a Windows-only test can stop compiling
+# with every other gate green. `go tool -n` names the host binary; GOOS only picks the files.
+# It runs a private copy because a sibling gate's `go tool` can still hold the cached file open
+# for writing on a cold cache, and executing that file then fails with "Text file busy".
+[gates.lint-windows]
+run = 'd=$(mktemp -d) && trap "rm -rf \"$d\"" EXIT && cp "$(go tool -n golangci-lint)" "$d/golangci-lint" && GOOS=windows "$d/golangci-lint" run --allow-parallel-runners ./...'
+
+# No-op in CI, which never uses --no-verify and already scanned every commit on
+# the way in, so a second scan there spends runner minutes to repeat it. The
+# guard is what keeps one definition serving both hooks.
+[gates.gitleaks]
+run = '[ -n "$CI" ] || gitleaks git --redact --no-banner --log-level warn'
