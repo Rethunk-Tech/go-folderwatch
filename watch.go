@@ -283,7 +283,7 @@ func sizesOf(names []string) map[string]int64 {
 // read through a handle of our own (Go opens it shared with writers).
 func sizeOf(name string) (int64, bool) {
 	if runtime.GOOS == "windows" {
-		f, err := os.Open(name)
+		f, err := os.Open(name) //nolint:gosec // name is a path fsnotify reported inside a folder already being watched; reading its size is the point.
 		if err != nil {
 			return 0, false
 		}
