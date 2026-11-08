@@ -6,6 +6,8 @@ Notable changes to `go-folderwatch`. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-08
+
 ### Added
 
 - `Run` watches the `Target`s `Deps.Targets` returns and calls `Deps.Emit` once per folder that goes quiet, collapsing each burst into one call.
@@ -15,4 +17,5 @@ Notable changes to `go-folderwatch`. The format follows
 - `Deps.Touched` reports every path the watch sees as it happens, before the debounce.
 - `Holds` with `NewHolds` and `Hold` closes the watches at and below a root until released, so a caller can move a folder a watch would otherwise pin open.
 
-[Unreleased]: https://github.com/Rethunk-Tech/go-folderwatch/commits/main
+[Unreleased]: https://github.com/Rethunk-Tech/go-folderwatch/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Rethunk-Tech/go-folderwatch/releases/tag/v0.1.0
