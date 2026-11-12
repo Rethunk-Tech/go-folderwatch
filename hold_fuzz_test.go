@@ -1,7 +1,6 @@
 package folderwatch
 
 import (
-	"context"
 	"path/filepath"
 	"testing"
 )
@@ -23,7 +22,7 @@ func FuzzHeld(f *testing.F) {
 		if h.held(dir) {
 			t.Fatalf("held(%q) = true with no holds", dir)
 		}
-		release := h.Hold(context.Background(), root)
+		release := h.Hold(t.Context(), root)
 		defer release()
 
 		got := h.held(dir)
@@ -43,8 +42,8 @@ func FuzzHoldRefcount(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, root, dir string) {
 		h := NewHolds()
-		first := h.Hold(context.Background(), root)
-		second := h.Hold(context.Background(), root)
+		first := h.Hold(t.Context(), root)
+		second := h.Hold(t.Context(), root)
 		rel, err := filepath.Rel(filepath.Clean(root), dir)
 		matches := err == nil && filepath.IsLocal(rel)
 
