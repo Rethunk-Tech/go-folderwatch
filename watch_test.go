@@ -114,6 +114,10 @@ func TestNonSettleEmitDropsWritingSoALaterSettleIsNotBlocked(t *testing.T) {
 	}
 	g.wait(t, 1)
 
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Link(oldPath, alias); err != nil {
+		t.Fatal(err)
+	}
 	mu.Lock()
 	settle = true
 	mu.Unlock()
@@ -125,17 +129,14 @@ func TestNonSettleEmitDropsWritingSoALaterSettleIsNotBlocked(t *testing.T) {
 	stopGrow := make(chan struct{})
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		f, err := os.OpenFile(oldPath, os.O_APPEND|os.O_WRONLY, 0)
-		if err != nil {
-			return
-		}
-		defer func() { _ = f.Close() }()
+		buf := []byte("z")
 		for {
 			select {
 			case <-stopGrow:
 				return
 			default:
-				_, _ = f.WriteString("z")
+				buf = append(buf, 'z')
+				_ = os.WriteFile(alias, buf, 0o600)
 				time.Sleep(10 * time.Millisecond)
 			}
 		}

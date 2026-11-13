@@ -79,6 +79,15 @@ type watcher struct {
 	active  map[string]*watch // by Dir
 	missing map[string]bool   // folders seen absent, so their appearing fires once
 	due     chan *watch
+	settled chan settleJob
+}
+
+// settleJob is a folder whose sizes were sampled and whose stable window has now elapsed.
+type settleJob struct {
+	a      *watch
+	names  []string
+	gen    int
+	before map[string]int64
 }
 
 // Run watches until ctx ends. fsnotify watches each folder's top level only; a folder that is missing is retried at
@@ -101,7 +110,7 @@ func Run(ctx context.Context, d Deps) error {
 	if stable <= 0 {
 		stable = time.Second
 	}
-	r := &watcher{done: ctx.Done(), d: d, w: fw, quiet: quiet, stable: stable, active: map[string]*watch{}, missing: map[string]bool{}, due: make(chan *watch)}
+	r := &watcher{done: ctx.Done(), d: d, w: fw, quiet: quiet, stable: stable, active: map[string]*watch{}, missing: map[string]bool{}, due: make(chan *watch), settled: make(chan settleJob)}
 	tick := time.NewTicker(every)
 	defer tick.Stop()
 	r.retarget()
@@ -124,6 +133,8 @@ func Run(ctx context.Context, d Deps) error {
 			r.onEvent(ev)
 		case a := <-r.due:
 			r.fire(a)
+		case job := <-r.settled:
+			r.finishSettle(job)
 		case err, ok := <-fw.Errors:
 			if !ok {
 				return nil
@@ -176,22 +187,29 @@ func (r *watcher) settle(a *watch) {
 	names, gen := slices.Collect(maps.Keys(a.writing)), a.gen
 	r.mu.Unlock()
 	before := sizesOf(names)
-	select {
-	case <-time.After(r.stable):
-	case <-r.done:
-		return
-	}
+	time.AfterFunc(r.stable, func() {
+		select {
+		case r.settled <- settleJob{a: a, names: names, gen: gen, before: before}:
+		case <-r.done:
+		}
+	})
+}
+
+func (r *watcher) finishSettle(job settleJob) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.active[a.t.Dir] != a {
+	if r.active[job.a.t.Dir] != job.a {
+		r.mu.Unlock()
 		return
 	}
-	if a.gen != gen || !maps.Equal(before, sizesOf(names)) {
-		a.timer.Reset(r.quiet)
+	if job.a.gen != job.gen || !maps.Equal(job.before, sizesOf(job.names)) {
+		job.a.timer.Reset(r.quiet)
+		r.mu.Unlock()
 		return
 	}
-	clear(a.writing)
-	r.d.Emit(a.t)
+	clear(job.a.writing)
+	now := job.a.t
+	r.mu.Unlock()
+	r.d.Emit(now)
 }
 
 func (r *watcher) retarget() {
