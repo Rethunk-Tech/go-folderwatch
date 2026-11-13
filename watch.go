@@ -2,6 +2,7 @@ package folderwatch
 
 import (
 	"context"
+	"errors"
 	"log"
 	"maps"
 	"os"
@@ -141,6 +142,9 @@ func Run(ctx context.Context, d Deps) error {
 				return nil
 			}
 			log.Printf("folderwatch: %v", err)
+			if errors.Is(err, fsnotify.ErrEventOverflow) {
+				r.overflowed()
+			}
 		}
 	}
 }
@@ -150,6 +154,16 @@ func (r *watcher) stopAll() {
 	defer r.mu.Unlock()
 	for _, a := range r.active {
 		a.timer.Stop()
+	}
+}
+
+// overflowed treats every watched folder as changed: the kernel dropped events, so what changed is unknown.
+func (r *watcher) overflowed() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, a := range r.active {
+		a.gen++
+		a.timer.Reset(r.quiet)
 	}
 }
 

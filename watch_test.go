@@ -395,3 +395,13 @@ func TestChangedSignalRetargetsAtOnce(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(b, "x"), nil, 0o600)
 	g.wait(t, 1)
 }
+
+func TestOverflowReArmsEveryWatchedFolder(t *testing.T) {
+	t.Parallel()
+	a := &watch{timer: time.NewTimer(time.Hour)}
+	r := &watcher{quiet: time.Hour, active: map[string]*watch{"d": a}}
+	r.overflowed()
+	if a.gen != 1 {
+		t.Fatalf("gen %d", a.gen)
+	}
+}
