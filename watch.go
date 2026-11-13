@@ -260,7 +260,8 @@ func (r *watcher) fire(a *watch) {
 	}
 	clear(a.created)
 	now := a.t
-	waits := now.Settle && len(a.writing) > 0
+	gone := r.active[now.Dir] != a
+	waits := !gone && now.Settle && len(a.writing) > 0
 	if !waits {
 		clear(a.writing)
 	}

@@ -70,6 +70,22 @@ func start(t *testing.T, targets func() []Target) *got {
 	return g
 }
 
+func TestRemovedSettlingFolderIsStillAnnounced(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join(t.TempDir(), "watched")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	g := start(t, func() []Target { return []Target{{Key: "files", Dir: dir, Settle: true}} })
+	if err := os.WriteFile(filepath.Join(dir, "a.zip"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(dir, dir+".gone"); err != nil {
+		t.Fatal(err)
+	}
+	g.wait(t, 1)
+}
+
 func TestNonSettleEmitDropsWritingSoALaterSettleIsNotBlocked(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
