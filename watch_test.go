@@ -4,9 +4,13 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
 )
 
 type got struct {
@@ -403,6 +407,52 @@ func TestOverflowReArmsEveryWatchedFolder(t *testing.T) {
 	r.overflowed()
 	if a.gen != 1 {
 		t.Fatalf("gen %d", a.gen)
+	}
+}
+
+func TestAddedFolderDoesNotAnnounceBeforeAnyChange(t *testing.T) {
+	var targets []Target
+	for i := range 300 {
+		targets = append(targets, Target{Key: "k", Dir: t.TempDir(), Data: i})
+	}
+	g := &got{}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() {
+		_ = Run(ctx, Deps{Targets: func() []Target { return targets }, Emit: g.emit, Quiet: time.Nanosecond, Retarget: time.Hour})
+		close(done)
+	}()
+	t.Cleanup(func() { cancel(); <-done })
+	time.Sleep(300 * time.Millisecond)
+	if n := g.count(); n != 0 {
+		t.Fatalf("%d spurious announcements for untouched folders", n)
+	}
+}
+
+func TestStoppedWatchLeavesNoTimerGoroutineWhenFsnotifyCloses(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "later")
+	fw, err := fsnotify.NewWatcher()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		_ = run(ctx, Deps{Targets: func() []Target { return []Target{{Key: "k", Dir: missing}} }, Emit: func(Target) {}, Quiet: 20 * time.Millisecond, Retarget: 10 * time.Millisecond}, fw)
+		close(done)
+	}()
+	time.Sleep(100 * time.Millisecond)
+	if err := os.Mkdir(missing, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(25 * time.Millisecond)
+	_ = fw.Close()
+	<-done
+	time.Sleep(200 * time.Millisecond)
+	buf := make([]byte, 1<<20)
+	if stacks := string(buf[:runtime.Stack(buf, true)]); strings.Contains(stacks, "folderwatch.(*watcher).add.func") {
+		t.Fatalf("timer goroutine still blocked:\n%s", stacks)
 	}
 }
 

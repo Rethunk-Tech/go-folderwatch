@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"maps"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -100,6 +101,14 @@ func Run(ctx context.Context, d Deps) error {
 		return err
 	}
 	defer func() { _ = fw.Close() }()
+	return run(ctx, d, fw)
+}
+
+// run is Run over a given fsnotify watcher. Its own context ends with it, so a timer or settle goroutine blocked on a
+// send is released on every return path, not only when the caller cancels.
+func run(parent context.Context, d Deps, fw *fsnotify.Watcher) error {
+	ctx, cancel := context.WithCancel(parent)
+	defer cancel()
 	holdRequests, detach := d.Holds.attach()
 	defer detach()
 	quiet, every, stable := d.Quiet, d.Retarget, d.Stable
@@ -274,13 +283,16 @@ func (r *watcher) add(dir string, t Target) {
 		return
 	}
 	a := &watch{t: t, dir: dir, writing: map[string]struct{}{}, created: map[string]struct{}{}}
-	a.timer = time.AfterFunc(r.quiet, func() {
+	// Armed far out, then stopped or shortened, so a tiny quiet cannot fire before the decision below.
+	a.timer = time.AfterFunc(math.MaxInt64, func() {
 		select {
 		case r.due <- a:
 		case <-r.done:
 		}
 	})
-	if !r.missing[dir] {
+	if r.missing[dir] {
+		a.timer.Reset(r.quiet)
+	} else {
 		a.timer.Stop()
 	}
 	delete(r.missing, dir)
