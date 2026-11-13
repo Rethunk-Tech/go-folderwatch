@@ -70,6 +70,16 @@ func start(t *testing.T, targets func() []Target) *got {
 	return g
 }
 
+func TestUncleanDirStillReceivesEvents(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	g := start(t, func() []Target { return []Target{{Key: "k", Dir: dir + string(filepath.Separator) + "."}} })
+	if err := os.WriteFile(filepath.Join(dir, "a"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	g.wait(t, 1)
+}
+
 func TestRemovedSettlingFolderIsStillAnnounced(t *testing.T) {
 	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "watched")

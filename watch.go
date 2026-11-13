@@ -60,6 +60,7 @@ type Deps struct {
 
 type watch struct {
 	t     Target
+	dir   string // cleaned Dir, the key fsnotify event names resolve to
 	timer *time.Timer
 	// writing holds files that received write events since the last announcement; gen counts every event.
 	writing map[string]struct{}
@@ -197,7 +198,7 @@ func (r *watcher) settle(a *watch) {
 
 func (r *watcher) finishSettle(job settleJob) {
 	r.mu.Lock()
-	if r.active[job.a.t.Dir] != job.a {
+	if r.active[job.a.dir] != job.a {
 		r.mu.Unlock()
 		return
 	}
@@ -218,7 +219,7 @@ func (r *watcher) retarget() {
 	want := map[string]Target{}
 	for _, t := range r.d.Targets() {
 		if t.Dir != "" && !r.d.Holds.held(t.Dir) {
-			want[t.Dir] = t
+			want[filepath.Clean(t.Dir)] = t
 		}
 	}
 	for dir, a := range r.active {
@@ -253,7 +254,7 @@ func (r *watcher) add(dir string, t Target) {
 		log.Printf("folderwatch: %s: %v", dir, err)
 		return
 	}
-	a := &watch{t: t, writing: map[string]struct{}{}, created: map[string]struct{}{}}
+	a := &watch{t: t, dir: dir, writing: map[string]struct{}{}, created: map[string]struct{}{}}
 	a.timer = time.AfterFunc(r.quiet, func() {
 		select {
 		case r.due <- a:
@@ -278,7 +279,7 @@ func (r *watcher) fire(a *watch) {
 	}
 	clear(a.created)
 	now := a.t
-	gone := r.active[now.Dir] != a
+	gone := r.active[a.dir] != a
 	waits := !gone && now.Settle && len(a.writing) > 0
 	if !waits {
 		clear(a.writing)
