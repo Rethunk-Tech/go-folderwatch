@@ -22,7 +22,7 @@ No test is build-tagged, so both jobs run the same test binary. Two paths only b
 - **`retarget` keeps the watch when the folder stays.** If a folder is still a target under a new `Key`, its `*watch` is kept so a pending announcement survives the change. Only removal stops the timer and drops the watch.
 - **Holds are matched by path prefix, not by target.** `held` uses `filepath.Rel` plus `filepath.IsLocal` so a sibling directory that shares a name prefix (`/a/sub2` against a held `/a/sub`) is not held. Never compare with `strings.HasPrefix`.
 - **Zero durations are policy; `Settle` is not.** `Quiet`, `Stable` and `Retarget` have defaults because a caller that leaves them out still wants a working watcher. `Settle` has no default because whether a file is written in place is a fact about the caller's folder, and guessing it wrong either delays real announcements or announces half-written files.
-- **No exported helper a caller does not need.** `watcher`, `watch`, `fire`, `settle`, `retarget`, `add`, `sizesOf`, `sizeOf` and `isDir` stay unexported. The public surface is `Run`, `Deps`, `Target`, `Holds`, `NewHolds` and `Hold`, and a new export needs a caller that cannot work without it.
+- **No exported helper a caller does not need.** `watcher`, `watch`, `fire`, `settle`, `retarget`, `add`, `sizesOf`, `sizeOf` and `sameDir` stay unexported. The public surface is `Run`, `Deps`, `Target`, `Holds`, `NewHolds` and `Hold`, and a new export needs a caller that cannot work without it.
 
 ## Files
 

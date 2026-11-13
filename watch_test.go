@@ -474,3 +474,27 @@ func TestRetargetForgetsFoldersNoLongerTargeted(t *testing.T) {
 		t.Fatalf("%d spurious announcements for a folder that was dropped while missing", n)
 	}
 }
+
+// Renaming a parent moves the watched folder without an event of its own; a new folder at the path must be watched.
+func TestFolderReplacedThroughItsParentIsWatchedAgain(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	parent := filepath.Join(root, "Mods")
+	dir := filepath.Join(parent, "Pack")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	g := start(t, func() []Target { return []Target{{Key: "pack", Dir: dir}} })
+	if err := os.Rename(parent, filepath.Join(root, "Mods.old")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(400 * time.Millisecond)
+	n := g.count()
+	if err := os.WriteFile(filepath.Join(dir, "x"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	g.wait(t, n+1)
+}

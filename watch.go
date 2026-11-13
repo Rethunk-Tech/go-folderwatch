@@ -62,7 +62,8 @@ type Deps struct {
 
 type watch struct {
 	t     Target
-	dir   string // cleaned Dir, the key fsnotify event names resolve to
+	dir   string      // cleaned Dir, the key fsnotify event names resolve to
+	fi    os.FileInfo // the folder the watch was added on, to tell when another one has taken its path
 	timer *time.Timer
 	// writing holds files that received write events since the last announcement; gen counts every event.
 	writing map[string]struct{}
@@ -246,7 +247,8 @@ func (r *watcher) retarget() {
 		}
 	}
 	for dir, a := range r.active {
-		if t, ok := want[dir]; ok {
+		t, ok := want[dir]
+		if ok && sameDir(dir, a.fi) {
 			// The same folder under another key keeps its watch, so a change that is still waiting to be
 			// announced is not lost.
 			a.t = t
@@ -255,6 +257,12 @@ func (r *watcher) retarget() {
 		a.timer.Stop()
 		_ = r.w.Remove(dir)
 		delete(r.active, dir)
+		if ok {
+			// Renaming a parent moves the watched folder away without an event on its watch, so whatever is at dir
+			// now is a new folder: watch it as one that appeared.
+			r.missing[dir] = true
+			continue
+		}
 		log.Printf("folderwatch: stopped watching %s", dir)
 	}
 	for dir := range r.missing {
@@ -271,7 +279,8 @@ func (r *watcher) retarget() {
 
 // add starts watching dir, or notes it as awaited when it does not exist yet. The caller holds mu.
 func (r *watcher) add(dir string, t Target) {
-	if !isDir(dir) {
+	fi, err := os.Stat(dir)
+	if err != nil || !fi.IsDir() {
 		if !r.missing[dir] {
 			log.Printf("folderwatch: waiting for %s to appear", dir)
 		}
@@ -282,7 +291,7 @@ func (r *watcher) add(dir string, t Target) {
 		log.Printf("folderwatch: %s: %v", dir, err)
 		return
 	}
-	a := &watch{t: t, dir: dir, writing: map[string]struct{}{}, created: map[string]struct{}{}}
+	a := &watch{t: t, dir: dir, fi: fi, writing: map[string]struct{}{}, created: map[string]struct{}{}}
 	// Armed far out, then stopped or shortened, so a tiny quiet cannot fire before the decision below.
 	a.timer = time.AfterFunc(math.MaxInt64, func() {
 		select {
@@ -323,10 +332,10 @@ func (r *watcher) fire(a *watch) {
 	r.d.Emit(now)
 }
 
-// isDir reports whether dir is an existing folder.
-func isDir(dir string) bool {
+// sameDir reports whether dir is still the folder fi describes.
+func sameDir(dir string, fi os.FileInfo) bool {
 	st, err := os.Stat(dir)
-	return err == nil && st.IsDir()
+	return err == nil && os.SameFile(st, fi)
 }
 
 // sizesOf maps each file to its size, or -1 when it is gone.
