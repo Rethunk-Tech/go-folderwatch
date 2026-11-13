@@ -70,6 +70,53 @@ func start(t *testing.T, targets func() []Target) *got {
 	return g
 }
 
+func TestEmitDoesNotRunConcurrently(t *testing.T) {
+	t.Parallel()
+	a, b := t.TempDir(), t.TempDir()
+	var mu sync.Mutex
+	inCall := 0
+	overlapped := false
+	finished := make(chan struct{}, 2)
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() {
+		_ = Run(ctx, Deps{
+			Targets: func() []Target {
+				return []Target{{Key: "a", Dir: a}, {Key: "b", Dir: b}}
+			},
+			Quiet: 50 * time.Millisecond,
+			Emit: func(Target) {
+				mu.Lock()
+				if inCall > 0 {
+					overlapped = true
+				}
+				inCall++
+				mu.Unlock()
+				time.Sleep(100 * time.Millisecond)
+				mu.Lock()
+				inCall--
+				mu.Unlock()
+				finished <- struct{}{}
+			},
+		})
+		close(done)
+	}()
+	t.Cleanup(func() { cancel(); <-done })
+	time.Sleep(200 * time.Millisecond)
+	_ = os.WriteFile(filepath.Join(a, "x"), []byte("x"), 0o600)
+	_ = os.WriteFile(filepath.Join(b, "x"), []byte("x"), 0o600)
+	for range 2 {
+		select {
+		case <-finished:
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for Emit")
+		}
+	}
+	if overlapped {
+		t.Fatal("Emit ran concurrently")
+	}
+}
+
 func TestBurstFiresOnce(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

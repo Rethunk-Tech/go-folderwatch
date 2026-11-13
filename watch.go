@@ -78,6 +78,7 @@ type watcher struct {
 	mu      sync.Mutex
 	active  map[string]*watch // by Dir
 	missing map[string]bool   // folders seen absent, so their appearing fires once
+	due     chan *watch
 }
 
 // Run watches until ctx ends. fsnotify watches each folder's top level only; a folder that is missing is retried at
@@ -100,7 +101,7 @@ func Run(ctx context.Context, d Deps) error {
 	if stable <= 0 {
 		stable = time.Second
 	}
-	r := &watcher{done: ctx.Done(), d: d, w: fw, quiet: quiet, stable: stable, active: map[string]*watch{}, missing: map[string]bool{}}
+	r := &watcher{done: ctx.Done(), d: d, w: fw, quiet: quiet, stable: stable, active: map[string]*watch{}, missing: map[string]bool{}, due: make(chan *watch)}
 	tick := time.NewTicker(every)
 	defer tick.Stop()
 	r.retarget()
@@ -121,6 +122,8 @@ func Run(ctx context.Context, d Deps) error {
 				return nil
 			}
 			r.onEvent(ev)
+		case a := <-r.due:
+			r.fire(a)
 		case err, ok := <-fw.Errors:
 			if !ok {
 				return nil
@@ -233,7 +236,12 @@ func (r *watcher) add(dir string, t Target) {
 		return
 	}
 	a := &watch{t: t, writing: map[string]struct{}{}, created: map[string]struct{}{}}
-	a.timer = time.AfterFunc(r.quiet, func() { r.fire(a) })
+	a.timer = time.AfterFunc(r.quiet, func() {
+		select {
+		case r.due <- a:
+		case <-r.done:
+		}
+	})
 	if !r.missing[dir] {
 		a.timer.Stop()
 	}
