@@ -31,8 +31,24 @@ func (h *Holds) Hold(ctx context.Context, root string) (release func()) {
 		h.mu.Lock()
 		if h.roots[root]--; h.roots[root] <= 0 {
 			delete(h.roots, root)
+		} else {
+			h.mu.Unlock()
+			return
 		}
+		stopped := h.stopped
 		h.mu.Unlock()
+		if stopped == nil {
+			return
+		}
+		done := make(chan struct{})
+		select {
+		case h.sync <- done:
+			select {
+			case <-done:
+			case <-stopped:
+			}
+		case <-stopped:
+		}
 	})
 	if stopped == nil {
 		// No watch is running, so nothing is open; one that starts later skips the held folders.

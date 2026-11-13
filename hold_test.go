@@ -50,6 +50,33 @@ func TestHoldClosesTheWatchesBelowAFolderUntilReleased(t *testing.T) {
 	g.wait(t, 1)
 }
 
+// Release puts the folder back under watch at once, not on the next Retarget tick.
+func TestReleasePutsFolderBackUnderWatchImmediately(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	holds := NewHolds()
+	g := &got{}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() {
+		_ = Run(ctx, Deps{
+			Targets:  func() []Target { return []Target{{Key: "files", Dir: dir}} },
+			Emit:     g.emit,
+			Quiet:    50 * time.Millisecond,
+			Retarget: time.Hour,
+			Holds:    holds,
+		})
+		close(done)
+	}()
+	t.Cleanup(func() { cancel(); <-done })
+	time.Sleep(200 * time.Millisecond)
+
+	release := holds.Hold(t.Context(), dir)
+	release()
+	_ = os.WriteFile(filepath.Join(dir, "a.txt"), []byte("x"), 0o600)
+	g.wait(t, 1)
+}
+
 // Without a running watch, Hold returns at once.
 func TestHoldWithoutAWatchReturns(t *testing.T) {
 	t.Parallel()
