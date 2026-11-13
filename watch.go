@@ -254,15 +254,16 @@ func (r *watcher) retarget() {
 			a.t = t
 			continue
 		}
-		a.timer.Stop()
 		_ = r.w.Remove(dir)
 		delete(r.active, dir)
 		if ok {
-			// Renaming a parent moves the watched folder away without an event on its watch, so whatever is at dir
-			// now is a new folder: watch it as one that appeared.
+			// The folder moved away without an event on its watch (a renamed parent, or any rename on Windows), so
+			// announce it gone as onEvent would and watch whatever is at dir now as a folder that appeared.
+			a.timer.Reset(r.quiet)
 			r.missing[dir] = true
 			continue
 		}
+		a.timer.Stop()
 		log.Printf("folderwatch: stopped watching %s", dir)
 	}
 	for dir := range r.missing {
@@ -287,6 +288,8 @@ func (r *watcher) add(dir string, t Target) {
 		r.missing[dir] = true
 		return
 	}
+	// Windows Stat reads the folder's identity by path at the first SameFile; read it now, while dir is this folder.
+	os.SameFile(fi, fi)
 	if err := r.w.Add(dir); err != nil {
 		log.Printf("folderwatch: %s: %v", dir, err)
 		return

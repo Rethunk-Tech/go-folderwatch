@@ -8,9 +8,10 @@
 cannot resolve that check from PATH. The `windows-latest` test job is the only place
 Windows-only behaviour runs.
 
-No test is build-tagged, so both jobs run the same test binary. Two paths only behave differently on Windows, and the Windows job is the only place they are exercised for real:
+No test is build-tagged, so both jobs run the same test binary. Three paths only behave differently on Windows, and the Windows job is the only place they are exercised for real:
 
 - `sizeOf`'s `runtime.GOOS == "windows"` branch, reached from `settle` in `TestSlowDirectWriterWaitsForStableSize` and `TestRenamedInFileIsAnnouncedAfterOneSettleWindow`. It reads the size through a handle of its own because Windows reports a stale size by name while a writer holds the file open.
+- `add`'s `os.SameFile(fi, fi)`, which reads the folder's identity while it is still at its path; Windows `Stat` otherwise reads it by path at the first comparison, so a replacement folder compares equal. `TestFolderReplacedAtItsPathIsWatchedAgain` reaches it, because Windows sends no event when the watched folder itself is renamed.
 - `TestHoldClosesTheWatchesBelowAFolderUntilReleased`, whose rename of a watched folder fails outright on Windows unless the hold closed the watches below it first — the same test passes on Linux for reasons that have nothing to do with holds.
 
 ## Shape

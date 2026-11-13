@@ -478,6 +478,9 @@ func TestRetargetForgetsFoldersNoLongerTargeted(t *testing.T) {
 // Renaming a parent moves the watched folder without an event of its own; a new folder at the path must be watched.
 func TestFolderReplacedThroughItsParentIsWatchedAgain(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows refuses to rename a folder while a ReadDirectoryChangesW handle is open on a folder inside it")
+	}
 	root := t.TempDir()
 	parent := filepath.Join(root, "Mods")
 	dir := filepath.Join(parent, "Pack")
@@ -489,6 +492,28 @@ func TestFolderReplacedThroughItsParentIsWatchedAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(400 * time.Millisecond)
+	n := g.count()
+	if err := os.WriteFile(filepath.Join(dir, "x"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	g.wait(t, n+1)
+}
+
+// Windows reports no event when the watched folder itself is renamed, so only the identity check sees the new folder.
+func TestFolderReplacedAtItsPathIsWatchedAgain(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join(t.TempDir(), "Pack")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	g := start(t, func() []Target { return []Target{{Key: "pack", Dir: dir}} })
+	if err := os.Rename(dir, dir+".old"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(400 * time.Millisecond)
