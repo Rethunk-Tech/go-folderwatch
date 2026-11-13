@@ -405,3 +405,22 @@ func TestOverflowReArmsEveryWatchedFolder(t *testing.T) {
 		t.Fatalf("gen %d", a.gen)
 	}
 }
+
+func TestRetargetForgetsFoldersNoLongerTargeted(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "later")
+	var mu sync.Mutex
+	var targets []Target
+	set := func(ts ...Target) { mu.Lock(); targets = ts; mu.Unlock() }
+	set(Target{Key: "k", Dir: dir})
+	g := start(t, func() []Target { mu.Lock(); defer mu.Unlock(); return targets })
+	set()
+	time.Sleep(200 * time.Millisecond)
+	if err := os.Mkdir(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	set(Target{Key: "k", Dir: dir})
+	time.Sleep(400 * time.Millisecond)
+	if n := g.count(); n != 0 {
+		t.Fatalf("%d spurious announcements for a folder that was dropped while missing", n)
+	}
+}

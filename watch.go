@@ -248,6 +248,11 @@ func (r *watcher) retarget() {
 		delete(r.active, dir)
 		log.Printf("folderwatch: stopped watching %s", dir)
 	}
+	for dir := range r.missing {
+		if _, ok := want[dir]; !ok {
+			delete(r.missing, dir)
+		}
+	}
 	for dir, t := range want {
 		if r.active[dir] == nil {
 			r.add(dir, t)
