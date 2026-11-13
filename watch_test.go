@@ -70,6 +70,64 @@ func start(t *testing.T, targets func() []Target) *got {
 	return g
 }
 
+func TestNonSettleEmitDropsWritingSoALaterSettleIsNotBlocked(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	oldPath := filepath.Join(dir, "old.zip")
+	var mu sync.Mutex
+	settle := false
+	g := &got{}
+	changed := make(chan struct{}, 1)
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() {
+		_ = Run(ctx, Deps{
+			Targets: func() []Target {
+				mu.Lock()
+				defer mu.Unlock()
+				return []Target{{Key: "files", Dir: dir, Settle: settle}}
+			},
+			Emit: g.emit, Quiet: 50 * time.Millisecond, Stable: 200 * time.Millisecond, Retarget: time.Hour, Changed: changed,
+		})
+		close(done)
+	}()
+	t.Cleanup(func() { cancel(); <-done })
+	time.Sleep(200 * time.Millisecond)
+	if err := os.WriteFile(oldPath, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	g.wait(t, 1)
+
+	mu.Lock()
+	settle = true
+	mu.Unlock()
+	changed <- struct{}{}
+
+	if err := os.WriteFile(filepath.Join(dir, "new.zip"), []byte("y"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stopGrow := make(chan struct{})
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		f, err := os.OpenFile(oldPath, os.O_APPEND|os.O_WRONLY, 0)
+		if err != nil {
+			return
+		}
+		defer func() { _ = f.Close() }()
+		for {
+			select {
+			case <-stopGrow:
+				return
+			default:
+				_, _ = f.WriteString("z")
+				time.Sleep(10 * time.Millisecond)
+			}
+		}
+	}()
+	t.Cleanup(func() { close(stopGrow) })
+	g.wait(t, 2)
+}
+
 func TestEmitDoesNotRunConcurrently(t *testing.T) {
 	t.Parallel()
 	a, b := t.TempDir(), t.TempDir()

@@ -261,6 +261,9 @@ func (r *watcher) fire(a *watch) {
 	clear(a.created)
 	now := a.t
 	waits := now.Settle && len(a.writing) > 0
+	if !waits {
+		clear(a.writing)
+	}
 	r.mu.Unlock()
 	if waits {
 		r.settle(a)
