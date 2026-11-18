@@ -523,3 +523,40 @@ func TestFolderReplacedAtItsPathIsWatchedAgain(t *testing.T) {
 	}
 	g.wait(t, n+1)
 }
+
+// A missing file must not look like size 0: that would match a first look that also saw nothing, and announce a write that never landed.
+func TestAMissingFileDuringTheStableCheckKeepsTheFolderPending(t *testing.T) {
+	t.Parallel()
+	name := filepath.Join(t.TempDir(), "gone.zip")
+	var got []Target
+	a := &watch{
+		t:       Target{Key: "files"},
+		dir:     "d",
+		writing: map[string]struct{}{name: {}},
+		timer:   time.NewTimer(time.Hour),
+	}
+	t.Cleanup(func() { a.timer.Stop() })
+	r := &watcher{
+		d:      Deps{Emit: func(t Target) { got = append(got, t) }},
+		active: map[string]*watch{"d": a},
+		quiet:  time.Hour,
+	}
+	r.finishSettle(settleJob{a: a, names: []string{name}, before: map[string]int64{name: 0}})
+	if len(got) != 0 {
+		t.Fatalf("announced a missing file as size 0: %v", got)
+	}
+}
+
+func TestASettleAfterTheFolderWasReplacedIsNotAnnounced(t *testing.T) {
+	t.Parallel()
+	var got []Target
+	old := &watch{t: Target{Key: "old"}, dir: "d"}
+	r := &watcher{
+		d:      Deps{Emit: func(t Target) { got = append(got, t) }},
+		active: map[string]*watch{"d": {t: Target{Key: "new"}, dir: "d"}},
+	}
+	r.finishSettle(settleJob{a: old})
+	if len(got) != 0 {
+		t.Fatalf("announced the replaced folder: %v", got)
+	}
+}
