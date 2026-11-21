@@ -6,6 +6,21 @@ Notable changes to `go-folderwatch`. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The lint script removes the downloaded `actionlint` before running it.
+
+## [0.1.1] - 2026-11-12
+
+### Fixed
+
+- `Emit` is called only from `Run`, so callbacks never overlap, and `Run` no longer blocks while it waits for a file's size to settle.
+- A folder moved off its path is announced, a folder is watched again when a renamed parent leaves a new one at its path, and a settling folder removed before it is stable is announced.
+- Every folder is announced again after an inotify event overflow.
+- Events for a `Dir` that is not path-clean are no longer dropped.
+- `Run` stops its timers on every return path and never arms a new watch's timer early, and `Retarget` forgets awaited folders that are no longer targets.
+- A folder is rewatched when its last `Hold` is released.
+
 ## [0.1.0] - 2026-11-08
 
 ### Added
@@ -17,5 +32,6 @@ Notable changes to `go-folderwatch`. The format follows
 - `Deps.Touched` reports every path the watch sees as it happens, before the debounce.
 - `Holds` with `NewHolds` and `Hold` closes the watches at and below a root until released, so a caller can move a folder a watch would otherwise pin open.
 
-[Unreleased]: https://github.com/Rethunk-Tech/go-folderwatch/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Rethunk-Tech/go-folderwatch/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Rethunk-Tech/go-folderwatch/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Rethunk-Tech/go-folderwatch/releases/tag/v0.1.0
